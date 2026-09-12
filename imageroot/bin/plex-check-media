@@ -1,0 +1,39 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 tebbi
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# Pre-start guard for plex.service: every configured media path must exist and
+# be readable by the module user, and - unless MEDIA_REQUIRE_MOUNT=false - must
+# live on a mounted filesystem other than the root filesystem (iSCSI disk, NFS
+# share, ...). Plex removes library items whose files disappeared; starting it
+# against a not-yet-mounted, empty directory would empty the libraries.
+#
+# Reads MEDIA_PATHS (comma-separated host paths) and MEDIA_REQUIRE_MOUNT from
+# the module environment (loaded by the unit).
+#
+
+set -e
+exec 1>&2
+
+IFS=',' read -r -a paths <<< "${MEDIA_PATHS:-}"
+rc=0
+for p in "${paths[@]}"; do
+    [ -z "$p" ] && continue
+    if [ ! -d "$p" ]; then
+        echo "plex-check-media: media path '$p' does not exist"; rc=1; continue
+    fi
+    if [ ! -r "$p" ] || [ ! -x "$p" ]; then
+        echo "plex-check-media: media path '$p' is not readable by $(id -un) (needs o+rx for other-owned files)"; rc=1; continue
+    fi
+    if [ "${MEDIA_REQUIRE_MOUNT:-true}" != "false" ]; then
+        target=$(findmnt -n -o TARGET --target "$p" 2>/dev/null || true)
+        if [ -z "$target" ] || [ "$target" = "/" ]; then
+            echo "plex-check-media: media path '$p' is not on a mounted filesystem (found on '${target:-?}'); mount the disk/share first or disable 'require mount' in the settings"; rc=1
+        fi
+    fi
+done
+exit $rc

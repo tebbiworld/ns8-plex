@@ -1,0 +1,22 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "get-configuration output",
+    "$id": "http://schema.nethserver.org/plex/get-configuration-output.json",
+    "description": "Get Plex Media Server configuration",
+    "type": "object",
+    "properties": {
+        "host": { "type": "string" },
+        "http2https": { "type": "boolean" },
+        "lets_encrypt": { "type": "boolean" },
+        "network_mode": { "type": "string" },
+        "media_paths": { "type": "array", "items": { "type": "string" } },
+        "media_require_mount": { "type": "boolean" },
+        "hw_transcoding": { "type": "boolean" },
+        "timezone": { "type": "string" },
+        "url": { "type": "string" },
+        "server_claimed": { "type": "boolean" },
+        "server_name": { "type": "string" },
+        "plex_version": { "type": "string" },
+        "web_port": { "type": "string" }
+    }
+}

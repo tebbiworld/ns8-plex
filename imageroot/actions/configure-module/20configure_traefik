@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2026 tebbi
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# One Traefik host route to the Plex web/API port: the published loopback port
+# in bridge mode, 127.0.0.1:32400 in host network mode.
+
+import json
+import os
+import sys
+
+import agent
+
+data = json.load(sys.stdin)
+host = data["host"]
+h2hs = data.get("http2https", True)
+module_id = os.environ["MODULE_ID"]
+backend_port = "32400" if (data.get("network_mode") == "host") else os.environ["WEB_PORT"]
+route = {
+    "instance": module_id,
+    "url": "http://127.0.0.1:" + backend_port,
+    "host": host,
+    "http2https": h2hs,
+    "lets_encrypt_check": True,
+    "lets_encrypt_cleanup": True,
+}
+if "lets_encrypt" in data:
+    route["lets_encrypt"] = data["lets_encrypt"]
+agent.set_route(route)

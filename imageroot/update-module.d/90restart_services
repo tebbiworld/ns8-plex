@@ -1,0 +1,16 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 tebbi
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# The core's update-module action extracts the new image but does not restart
+# the module's units, so a changed unit file or a new pinned Plex version would
+# only take effect at the next reboot.
+
+set -e
+exec 1>&2
+
+systemctl --user daemon-reload
+systemctl --user restart plex.service

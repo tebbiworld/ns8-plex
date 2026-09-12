@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2026 tebbi
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# Seed the environment for a fresh Plex instance: reserve the TCP port Traefik
+# reverse-proxies to (bridge mode) and fix the container host name. Everything
+# else (host name, media paths, network mode, ...) is applied by
+# configure-module.
+
+import os
+
+import agent
+
+tcp_ports = [p.strip() for p in os.environ.get("TCP_PORTS", "").split(",") if p.strip()]
+web_port = tcp_ports[0] if tcp_ports else "32400"
+agent.set_env("WEB_PORT", web_port)
+
+# Plex derives the server identity/name from the container host name; keep it
+# stable across container recreation (and unique per instance).
+agent.set_env("PLEX_CONTAINER_HOSTNAME", os.environ["MODULE_ID"])
+
+# Defaults until the first configure-module run
+agent.set_env("NETWORK_MODE", "bridge")
+agent.set_env("PLEX_NETWORK_ARGS", f"--publish 127.0.0.1:{web_port}:32400")
+agent.set_env("PLEX_DEVICE_ARGS", "")
+agent.set_env("PLEX_MEDIA_MOUNTS", "")
+agent.set_env("MEDIA_PATHS", "")
+agent.set_env("MEDIA_REQUIRE_MOUNT", "true")
+agent.set_env("HW_TRANSCODING", "false")
+agent.set_env("TZ", "UTC")

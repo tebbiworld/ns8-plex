@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2026 tebbi
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# Validate the media paths before anything is written: absolute, no characters
+# that would break the unit's word splitting, existing, readable by the module
+# user and (optionally) on a mounted filesystem. Also refuse host network mode
+# when another instance on this node already uses it (port 32400 clash).
+
+import json
+import os
+import subprocess
+import sys
+
+import agent
+
+agent.set_weight(os.path.basename(__file__), 0)
+
+data = json.load(sys.stdin)
+errors = []
+
+def fail(field, value, error):
+    errors.append({"field": field, "parameter": field, "value": value, "error": error})
+
+paths = data.get("media_paths") or []
+require_mount = data.get("media_require_mount", True)
+seen = set()
+for p in paths:
+    p = (p or "").strip()
+    if not p:
+        continue
+    if not p.startswith("/") or any(c in p for c in " \t\n,:") or p == "/":
+        fail("media_paths", p, "media_path_invalid")
+        continue
+    p = os.path.normpath(p)
+    if p in seen:
+        continue
+    seen.add(p)
+    if not os.path.isdir(p):
+        fail("media_paths", p, "media_path_missing")
+        continue
+    if not os.access(p, os.R_OK | os.X_OK):
+        fail("media_paths", p, "media_path_unreadable")
+        continue
+    if require_mount:
+        target = subprocess.run(["findmnt", "-n", "-o", "TARGET", "--target", p],
+                                capture_output=True, text=True).stdout.strip()
+        if not target or target == "/":
+            fail("media_paths", p, "media_path_not_mounted")
+
+if data.get("network_mode") == "host" and os.environ.get("NETWORK_MODE") != "host":
+    # Any other Plex instance on this node in host mode already owns 32400.
+    probe = subprocess.run(["ss", "-tlnH", "sport = :32400"], capture_output=True, text=True).stdout
+    if probe.strip():
+        fail("network_mode", "host", "port_32400_in_use")
+
+if data.get("hw_transcoding") and not os.path.exists("/dev/dri"):
+    fail("hw_transcoding", True, "no_dri_device")
+
+if errors:
+    agent.set_status("validation-failed")
+    json.dump(errors, fp=sys.stdout)
+    sys.exit(2)

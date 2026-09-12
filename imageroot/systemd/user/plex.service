@@ -1,0 +1,65 @@
+#
+# Copyright (C) 2026 tebbi
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# Main unit for the Plex Media Server module: one rootless container running
+# the official docker.io/plexinc/pms-docker image (pinned by the module through
+# org.nethserver.images -> ${PMS_DOCKER_IMAGE}).
+#
+# Networking (PLEX_NETWORK_ARGS, set by configure-module):
+#   bridge  --publish 127.0.0.1:${WEB_PORT}:32400   Traefik reverse-proxies the
+#           web/API port; nothing else is exposed. LAN discovery (GDM/DLNA) is
+#           not available, clients find the server through plex.tv and the
+#           custom access URL (ADVERTISE_IP).
+#   host    --network=host                          32400 (and the discovery
+#           ports) directly on the node; only one such instance per node.
+#
+# Media: PLEX_MEDIA_MOUNTS holds one "--volume <path>:<path>:ro" per configured
+# media path. The libraries are mounted read-only at the *same* path inside the
+# container, so a Plex database migrated from another host keeps working. The
+# host owns the mounts (iSCSI, NFS, ...); plex-check-media refuses to start
+# Plex when a path is missing, unreadable or not on a mounted filesystem, so a
+# library scan never runs against an empty directory.
+#
+# Storage: plex-config (/config: database, metadata, thumbnails) and
+# plex-transcode (/transcode: scratch space, excluded from backup).
+
+[Unit]
+Description=Plex Media Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+WorkingDirectory=%S/state
+Restart=always
+TimeoutStartSec=300
+TimeoutStopSec=90
+# plex.env (runtime settings) is written by configure-module; touch it so the
+# --env-file below never fails on a fresh, not-yet-configured instance.
+ExecStartPre=/bin/touch %S/state/plex.env
+ExecStartPre=%h/.config/bin/plex-check-media
+ExecStartPre=/bin/rm -f %t/plex.pid %t/plex.ctr-id
+ExecStart=/usr/bin/podman run \
+    --conmon-pidfile %t/plex.pid \
+    --cidfile %t/plex.ctr-id \
+    --cgroups=no-conmon \
+    --replace -d --name plex \
+    --hostname ${PLEX_CONTAINER_HOSTNAME} \
+    $PLEX_NETWORK_ARGS \
+    $PLEX_DEVICE_ARGS \
+    --volume plex-config:/config:z \
+    --volume plex-transcode:/transcode:z \
+    $PLEX_MEDIA_MOUNTS \
+    --env-file %S/state/plex.env \
+    ${PMS_DOCKER_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/plex.ctr-id -t 60
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/plex.ctr-id
+PIDFile=%t/plex.pid
+Type=forking
+SyslogIdentifier=%u
+
+[Install]
+WantedBy=default.target

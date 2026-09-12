@@ -1,0 +1,78 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Configure plex",
+    "$id": "http://nethserver.org/json-schema/task/input/plex/configure-module",
+    "description": "Configure the Plex Media Server module",
+    "examples": [
+        {
+            "host": "plex.example.org",
+            "lets_encrypt": true,
+            "http2https": true,
+            "network_mode": "bridge",
+            "media_paths": ["/mnt/media", "/srv/nfs/music"],
+            "media_require_mount": true,
+            "hw_transcoding": false,
+            "plex_claim": "claim-xxxxxxxxxxxxxxxxxxxx",
+            "timezone": "Europe/Berlin"
+        }
+    ],
+    "type": "object",
+    "required": ["host"],
+    "properties": {
+        "host": {
+            "type": "string",
+            "title": "Host name",
+            "description": "Fully qualified domain name under which Plex is published.",
+            "format": "hostname",
+            "pattern": "\\."
+        },
+        "lets_encrypt": {
+            "type": "boolean",
+            "title": "Let's Encrypt certificate",
+            "description": "Request a valid Let's Encrypt certificate for the host name."
+        },
+        "http2https": {
+            "type": "boolean",
+            "title": "HTTP to HTTPS redirection",
+            "description": "Redirect all HTTP requests to HTTPS."
+        },
+        "network_mode": {
+            "type": "string",
+            "title": "Network mode",
+            "description": "bridge: only the web/API port is published on the node loopback and fronted by Traefik. host: the container shares the node network (32400 plus the GDM/DLNA discovery ports directly on the node IP); only one such instance per node.",
+            "enum": ["bridge", "host"],
+            "default": "bridge"
+        },
+        "media_paths": {
+            "type": "array",
+            "title": "Media paths",
+            "description": "Absolute host paths of the media libraries (iSCSI/NFS mounts, ...). Each is mounted read-only at the same path inside the container.",
+            "items": { "type": "string", "pattern": "^/[^ \\t\\n,:]*$" },
+            "default": []
+        },
+        "media_require_mount": {
+            "type": "boolean",
+            "title": "Require mounted filesystem",
+            "description": "Refuse to start Plex when a media path is not on a mounted filesystem (protects the libraries from a scan against an empty directory).",
+            "default": true
+        },
+        "hw_transcoding": {
+            "type": "boolean",
+            "title": "Hardware transcoding",
+            "description": "Pass /dev/dri (Intel/AMD GPU) into the container. Requires Plex Pass and read/write access of the module user to the render device.",
+            "default": false
+        },
+        "plex_claim": {
+            "type": "string",
+            "title": "Claim token",
+            "description": "One-time token from https://www.plex.tv/claim that links the server to your Plex account at the next start. Valid for 4 minutes; ignored once the server is claimed.",
+            "format": "password"
+        },
+        "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "TZ database name, e.g. Europe/Berlin.",
+            "default": "UTC"
+        }
+    }
+}
