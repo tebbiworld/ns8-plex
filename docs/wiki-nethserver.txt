@@ -1,0 +1,161 @@
+======Plex Media Server======
+[[https://www.plex.tv/media-server-downloads/|Plex Media Server]] organises your own movies, series, music and photos and streams them to Plex apps on phones, TVs, browsers and set-top boxes, at home and remotely, with transcoding on the fly.
+
+====Announcement and talks====
+The Plex app announcement TBA
+
+Plex Media Server is a community application from the [[ns8:tebbiworld_repository|tebbiworld]] repository. Documentation and source can be found on [[https://github.com/tebbiworld/ns8-plex|Github]]
+
+=====What it does=====
+The module runs the official ''plexinc/pms-docker'' image on a NethServer 8 node. The media libraries live on storage that the **node** mounts — an iSCSI disk, NFS shares from a NAS or from the Samba file server — and are passed read-only into the container. The module ships no Plex software: the node pulls the image published by Plex, Inc. at install and update time.
+
+  * One Traefik host name with Let's Encrypt, or optionally host networking for LAN discovery
+  * Any number of media paths, mounted read-only at the **same** path inside the container, so an existing Plex library can be migrated without re-scanning
+  * A pre-start guard that refuses to run Plex while a media mount is missing, so a library is never emptied by a scan against an empty directory
+  * One-time claim token to link the server to a Plex account, optional ''/dev/dri'' pass-through for hardware transcoding
+  * Backup of the Plex database and metadata through the NS8 backup
+
+A Plex account is required to link the server. Hardware transcoding additionally requires Plex Pass.
+
+=====Architecture=====
+A single rootless container.
+
+^ Component ^ Purpose ^
+| ''plex'' | Plex Media Server, port 32400, pinned image ''docker.io/plexinc/pms-docker:<version>'' |
+| volume ''plex-config'' | database, metadata, thumbnails (in the NS8 backup, ''Cache'' and ''Logs'' excluded) |
+| volume ''plex-transcode'' | transcoder scratch space (not in the backup) |
+| media paths | host paths, bind-mounted read-only at the same path (not in the backup — back up the storage itself) |
+
+The Plex version is pinned in the module; a new module release through the Software Center brings a new Plex version. The self-updating ''public'' and ''beta'' image tags are deliberately not used.
+
+====Network modes====
+  * **Bridge** (default): only the web/%%API%% port is published on the node loopback and fronted by Traefik with TLS. Clients find the server through plex.tv and the custom access %%URL%% ''%%https://<host>:443%%'', which the module sets automatically.
+  * **Host**: the container shares the node network. Plex binds 32400 and the GDM (32410–32414/udp) and DLNA (1900/udp, 32469) discovery ports on the node IP, so clients on the LAN discover the server by themselves. Only one host-mode instance per node.
+
+=====Installation=====
+On the NethServer 8 cluster leader:
+
+<code bash>
+add-module ghcr.io/tebbiworld/plex:1.0.0 1
+</code>
+
+Configure it, replacing the host name and the media paths (see //Preparing the media storage// first):
+
+<code bash>
+api-cli run module/plex1/configure-module --data '{
+  "host": "plex.example.org",
+  "lets_encrypt": true,
+  "http2https": true,
+  "network_mode": "bridge",
+  "media_paths": ["/media/plex", "/media/music"],
+  "media_require_mount": true,
+  "timezone": "Europe/Berlin"
+}'
+</code>
+
+Then get a claim token at [[https://www.plex.tv/claim]], paste it into the //Claim token// field of the settings page and save within four minutes. The server is linked to your account at the next start; the settings page shows whether it is linked. Open ''%%https://<host>/web%%'', check //Settings → Network → Custom server access URLs// contains ''%%https://<host>:443%%'' and //Secure connections// is //Preferred//, then add libraries pointing at the media paths.
+
+=====Preparing the media storage=====
+The container cannot mount iSCSI or NFS itself; the node does, exactly like a plain Linux Plex host would. Three things matter.
+
+====1. Mount with an SELinux context====
+NS8 nodes run SELinux in enforcing mode. A plain mount is ''unlabeled_t'' and the container is denied every read, even of world-readable files. The ''context='' mount option labels the whole mount without touching a single file (unlike ''chcon -R'', which does not work on NFS and would relabel terabytes):
+
+<code>
+# /etc/fstab
+UUID=<uuid>  /media/plex  ext4  _netdev,nofail,errors=remount-ro,context="system_u:object_r:container_file_t:s0"  0 0
+nas:/export/music  /media/music  nfs  ro,_netdev,nofail,x-systemd.automount,context="system_u:object_r:container_file_t:s0"  0 0
+</code>
+
+For an iSCSI disk, once:
+
+<code bash>
+dnf install -y iscsi-initiator-utils
+iscsiadm -m discovery -t st -p <portal-ip>
+iscsiadm -m node -T <iqn> -p <portal-ip> -o update -n node.startup -v automatic
+systemctl enable --now iscsid
+</code>
+
+''_netdev'' and ''nofail'' because the device or server only exists after the network is up: a missing mount does not block the boot, it only blocks the start of Plex (see the guard below).
+
+====2. Read permissions====
+The container is rootless: files owned by any user other than the module user appear as ''nobody'' inside it. Plex therefore only sees files with the //other// read bit set.
+
+  * **Local disk (iSCSI):** once ''chmod -R o+rX /media/plex''. Read-only is all Plex needs; the mount is read-only inside the container anyway.
+  * **NFS exported with ''all_squash,anonuid=...'':** nothing to do — the NFS server checks every access on its side as the configured user, the permission bits do not matter.
+  * **NFS with ''root_squash'' only:** the permission bits apply as for a local disk.
+
+====3. Keep the same paths====
+Plex stores absolute paths in its database. Mount the storage at the same path as on the previous host and a migrated library keeps working without a re-scan.
+
+=====Settings=====
+
+^ Setting ^ Description ^
+| Host name | %%FQDN%% under which Plex is published. Also set as the Plex custom server access %%URL%%. |
+| Let's Encrypt certificate | Requests a certificate for the host name. Requires that ports 80 and 443 of this name reach this node. |
+| HTTP to HTTPS redirection | Redirects HTTP to HTTPS. |
+| Network mode | //Bridge// (Traefik only) or //Host// (32400 and LAN discovery on the node IP, one instance per node). |
+| Media paths | Absolute node paths, one per line. No spaces, commas or colons. Each is mounted read-only at the same path in the container. |
+| Require mounted filesystem | Pre-start guard: every media path must exist, be readable by the module user and be on a mounted filesystem other than ''/''. Disable only for media on the system disk. |
+| Claim token | One-time token from plex.tv/claim, valid four minutes. Not stored after use. |
+| Hardware transcoding | Passes ''/dev/dri'' into the container. Requires Plex Pass and, once on the node, ''usermod -aG render,video plex1''. |
+| Timezone | ''TZ'' for the container, for example ''Europe/Berlin''. |
+
+=====Migrating an existing Plex server=====
+  - Install the module and configure the host name, without media paths, without linking.
+  - Stop Plex on the old host. For iSCSI, log the LUN out there — a LUN can only be attached to one initiator. Mount the storage on the node, check the permissions.
+  - Copy the old ''Plex Media Server'' directory (Linux package: ''/var/lib/plexmediaserver/Library/Application Support/Plex Media Server'') into the ''plex-config'' volume:
+
+<code bash>
+runagent -m plex1 podman volume inspect plex-config --format '{{.Mountpoint}}'
+systemctl --user -M plex1@ stop plex.service
+rsync -a "old:/var/lib/plexmediaserver/Library/Application Support/Plex Media Server/" \
+      "/home/plex1/.local/share/containers/storage/volumes/plex-config/_data/Library/Application Support/Plex Media Server/"
+chown -R plex1:plex1 /home/plex1/.local/share/containers/storage/volumes/plex-config/_data
+systemctl --user -M plex1@ start plex.service
+</code>
+
+  - Enter the media paths in the settings and save. Server identity, the account link and the libraries come along; no claim token is needed.
+  - Check the custom server access %%URL%% in Plex as described under //Installation//.
+
+=====Backup=====
+The NS8 backup contains the module state and the ''plex-config'' volume, minus ''Cache'', ''Logs'' and ''Crash Reports'' (''state-exclude.conf''). ''plex-transcode'' and the media are excluded; back up the media where it lives.
+
+=====Troubleshooting=====
+
+^ Symptom ^ Cause and fix ^
+| Service does not start, journal says ''plex-check-media: ... is not on a mounted filesystem'' | The mount is missing (after a reboot, iSCSI/NFS not reachable). Mount it, then ''systemctl --user -M plex1@ restart plex.service''. |
+| ''... is not readable by plex1'' | Permissions: ''chmod -R o+rX <path>'' or the NFS export options. |
+| Library empty although the files exist | The SELinux context is missing (''context='' in fstab), or the path in the container differs from the path stored in the library. |
+| "Bad Gateway" on the host name | The container is still starting (first start about 30 s): ''runagent -m plex1 podman logs plex''. |
+| Server cannot be linked | The token is older than four minutes — get a new one and save immediately. |
+| LAN clients stream through the Plex relay | Bridge mode has no LAN discovery. Enter the access %%URL%% in the clients or switch to host mode. |
+
+<code bash>
+runagent -m plex1 podman logs plex                   # Plex log
+journalctl --user -M plex1@ -u plex.service          # guard messages
+api-cli run module/plex1/get-configuration --data null
+</code>
+
+=====Licences and trademarks=====
+Unofficial, community-built package, not affiliated with or endorsed by Plex, Inc. "Plex" is a trademark of Plex, Inc. and is used here only to identify the packaged software. The module uses the default NS8 module logo, not the Plex logo.
+
+The module pulls the official Plex image at runtime and does not redistribute it; Plex Media Server is proprietary software subject to the [[https://www.plex.tv/about/privacy-legal/plex-terms-of-service/|Plex Terms of Service]]. The module's own code is licensed %%GPL%%-3.0-or-later.
+
+=====Links=====
+
+  * [[https://support.plex.tv/articles/|Plex support articles]]
+  * [[https://github.com/plexinc/pms-docker|Official Docker image]]
+  * [[https://github.com/tebbiworld/ns8-plex|Module on Github]]
+  * [[https://github.com/tebbiworld/ns8-plex/issues|Bug reports]]
+
+=====Disclaimer=====
+Private hobby project, shared as-is. No warranty, no guaranteed support, use at your own risk.
+
+----
+{{tag>application}}
+{{tag>category:media}}
+{{tag>status:Alpha}}
+{{tag>certlevel:1}}
+{{tag>repo:tebbiworld}}
+{{tag>description:"Plex Media Server — stream your own movies, series, music and photos"}}
