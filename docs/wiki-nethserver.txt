@@ -56,7 +56,10 @@ api-cli run module/plex1/configure-module --data '{
 Then get a claim token at [[https://www.plex.tv/claim]], paste it into the //Claim token// field of the settings page and save within four minutes. The server is linked to your account at the next start; the settings page shows whether it is linked. Open ''%%https://<host>/web%%'', check //Settings → Network → Custom server access URLs// contains ''%%https://<host>:443%%'' and //Secure connections// is //Preferred//, then add libraries pointing at the media paths.
 
 =====Preparing the media storage=====
-The container cannot mount iSCSI or NFS itself; the node does, exactly like a plain Linux Plex host would. Three things matter.
+The container cannot mount iSCSI or NFS itself; the node does, exactly like a plain Linux Plex host would. Three things matter, plus the special case where the share lives on the NS8 file server itself.
+
+====What the node already has====
+NethServer 8 nodes on Rocky Linux 9 ship with ''nfs-utils'' in the base image: the NFS **client** works out of the box (''mount -t nfs''), and the NFS **server** is present but disabled (''nfs-server.service''). Nothing needs to be installed for NFS. The iSCSI initiator (''iscsi-initiator-utils'') is **not** part of the image and must be installed. ''firewalld'' is active on every node; it does not affect outgoing client mounts, only an NFS server running on the node (see below).
 
 ====1. Mount with an SELinux context====
 NS8 nodes run SELinux in enforcing mode. A plain mount is ''unlabeled_t'' and the container is denied every read, even of world-readable files. The ''context='' mount option labels the whole mount without touching a single file (unlike ''chcon -R'', which does not work on NFS and would relabel terabytes):
@@ -76,7 +79,7 @@ iscsiadm -m node -T <iqn> -p <portal-ip> -o update -n node.startup -v automatic
 systemctl enable --now iscsid
 </code>
 
-''_netdev'' and ''nofail'' because the device or server only exists after the network is up: a missing mount does not block the boot, it only blocks the start of Plex (see the guard below).
+''_netdev'' and ''nofail'' because the device or server only exists after the network is up: a missing mount does not block the boot, it only blocks the start of Plex (see the guard below). ''mount -a'' applies the new entries; ''findmnt /media/music'' must show the mount with the ''context'' option.
 
 ====2. Read permissions====
 The container is rootless: files owned by any user other than the module user appear as ''nobody'' inside it. Plex therefore only sees files with the //other// read bit set.
@@ -87,6 +90,32 @@ The container is rootless: files owned by any user other than the module user ap
 
 ====3. Keep the same paths====
 Plex stores absolute paths in its database. Mount the storage at the same path as on the previous host and a migrated library keeps working without a re-scan.
+
+====Media on the NS8 file server (Samba) ====
+If the media already lives in a share of the NS8 //File server// (Samba account provider), the files are in that module's ''shares'' volume on the node that runs it, for example ''/home/samba1/.local/share/containers/storage/volumes/shares/_data/music''. Plex cannot bind-mount that directory directly: the Samba module's home is ''0700'' and the files carry the sub-UID/GID mapping of the Samba container, so the Plex module user cannot traverse it. The way that works — on the same node and across nodes alike — is a small NFS export on the Samba node, mounted by the Plex node like any other NFS share.
+
+On the node that runs the Samba module (here ''samba1''):
+
+<code bash>
+# uid of the module user and gid of the share directory (the sub-GID that owns it)
+id -u samba1
+stat -c %g /home/samba1/.local/share/containers/storage/volumes/shares/_data/music
+</code>
+
+<code>
+# /etc/exports  (one line per share; <plex-node-ip> = the node that runs Plex, or 127.0.0.1 if it is this node)
+/home/samba1/.local/share/containers/storage/volumes/shares/_data/music  <plex-node-ip>(ro,sync,no_subtree_check,all_squash,anonuid=<uid of samba1>,anongid=<gid of the directory>)
+</code>
+
+<code bash>
+systemctl enable --now nfs-server
+exportfs -ra && exportfs -v
+firewall-cmd --permanent --add-service=nfs --add-service=mountd --add-service=rpc-bind && firewall-cmd --reload
+</code>
+
+''all_squash'' with ''anonuid'' set to the Samba module user makes the NFS server read the files as that user, which owns the whole volume; the per-file permission bits and the Samba ACLs no longer matter for the Plex side, and the export is read-only. On the Plex node the share is then mounted exactly as in step 1 (''ro,_netdev,nofail,context=...''), for example at ''/media/music''. If Plex runs on the Samba node itself, the node mounts from ''127.0.0.1'' — an NFS loopback mount is fine.
+
+Note that this export is not managed by NS8: it survives module updates, but you maintain ''/etc/exports'' and the firewall rule yourself, and the exported path changes if the Samba module is ever moved or re-created under a new instance name.
 
 =====Settings=====
 
