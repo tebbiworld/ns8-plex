@@ -91,19 +91,19 @@ The container is rootless: files owned by any user other than the module user ap
 ====3. Keep the same paths====
 Plex stores absolute paths in its database. Mount the storage at the same path as on the previous host and a migrated library keeps working without a re-scan.
 
-====Media on the NS8 file server (Samba) ====
-If the media already lives in a share of the NS8 //File server// (Samba account provider), the files are in that module's ''shares'' volume on the node that runs it, for example ''/home/samba1/.local/share/containers/storage/volumes/shares/_data/music''. Plex cannot bind-mount that directory directly: the Samba module's home is ''0700'' and the files carry the sub-UID/GID mapping of the Samba container, so the Plex module user cannot traverse it. The way that works — on the same node and across nodes alike — is a small NFS export on the Samba node, mounted by the Plex node like any other NFS share.
+====Media on the NS8 file server (Samba)====
+If the media already lives in a share of the NS8 //File server// (Samba account provider), the files are in that module's ''shares'' volume on the node that runs it, for example ''/home/samba1/.local/share/containers/storage/volumes/shares/_data/music''. Whether Plex runs on another node or on that very node, the share is made available through a small NFS export on the Samba node — see the two cases below. The export is read-only and squashes every client to the Samba module user, so the Samba permissions and ACLs never need to be touched.
 
-On the node that runs the Samba module (here ''samba1''):
+On the node that runs the Samba module (here ''samba1''), find the two ids the export needs:
 
 <code bash>
-# uid of the module user and gid of the share directory (the sub-GID that owns it)
-id -u samba1
-stat -c %g /home/samba1/.local/share/containers/storage/volumes/shares/_data/music
+id -u samba1                                                             # uid of the module user, e.g. 1008
+stat -c %g /home/samba1/.local/share/containers/storage/volumes/shares/_data/music   # gid owning the share directory
 </code>
 
+===Plex on another node===
 <code>
-# /etc/exports  (one line per share; <plex-node-ip> = the node that runs Plex, or 127.0.0.1 if it is this node)
+# /etc/exports on the Samba node — one line per share, <plex-node-ip> = the node that runs Plex
 /home/samba1/.local/share/containers/storage/volumes/shares/_data/music  <plex-node-ip>(ro,sync,no_subtree_check,all_squash,anonuid=<uid of samba1>,anongid=<gid of the directory>)
 </code>
 
@@ -113,9 +113,39 @@ exportfs -ra && exportfs -v
 firewall-cmd --permanent --add-service=nfs --add-service=mountd --add-service=rpc-bind && firewall-cmd --reload
 </code>
 
-''all_squash'' with ''anonuid'' set to the Samba module user makes the NFS server read the files as that user, which owns the whole volume; the per-file permission bits and the Samba ACLs no longer matter for the Plex side, and the export is read-only. On the Plex node the share is then mounted exactly as in step 1 (''ro,_netdev,nofail,context=...''), for example at ''/media/music''. If Plex runs on the Samba node itself, the node mounts from ''127.0.0.1'' — an NFS loopback mount is fine.
+On the Plex node the share is mounted as in step 1, for example:
 
-Note that this export is not managed by NS8: it survives module updates, but you maintain ''/etc/exports'' and the firewall rule yourself, and the exported path changes if the Samba module is ever moved or re-created under a new instance name.
+<code>
+# /etc/fstab on the Plex node
+<samba-node>:/home/samba1/.local/share/containers/storage/volumes/shares/_data/music  /media/music  nfs  ro,_netdev,nofail,x-systemd.automount,context="system_u:object_r:container_file_t:s0"  0 0
+</code>
+
+===Plex on the node that holds the share===
+When the Plex module is installed on the Samba node itself, the files are already on the local disk — but the Plex container still cannot use them directly:
+
+  * the Samba module's home is ''0700'', so the Plex module user cannot traverse the path (this could be fixed with a traversal %%ACL%%, ''setfacl -m u:plex1:x'' on every path component);
+  * the share directories and files carry Samba's modes, typically ''drwxrws---'' and ''-rw-rw----'', owned by sub-UIDs of the Samba container. Inside the rootless Plex container they appear as ''nobody'' and are **not readable**, even with the traversal %%ACL%% in place (verified). Making them world-readable would mean changing modes inside the Samba volume, which Samba's create mask reverts for new files.
+
+Therefore use the same NFS export, just towards the node itself. NFS is already installed, and ''firewalld'' does not filter the loopback interface, so no firewall rule is needed:
+
+<code>
+# /etc/exports on the node (which is both Samba and Plex node)
+/home/samba1/.local/share/containers/storage/volumes/shares/_data/music  127.0.0.1(ro,sync,no_subtree_check,all_squash,anonuid=<uid of samba1>,anongid=<gid of the directory>)
+</code>
+
+<code bash>
+systemctl enable --now nfs-server
+exportfs -ra && exportfs -v
+</code>
+
+<code>
+# /etc/fstab on the same node
+127.0.0.1:/home/samba1/.local/share/containers/storage/volumes/shares/_data/music  /media/music  nfs  ro,_netdev,nofail,x-systemd.automount,context="system_u:object_r:container_file_t:s0"  0 0
+</code>
+
+A loopback NFS mount is fully supported by the Linux NFS client; the server reads the files as the Samba module user (which owns the whole volume), the Plex container sees a normal read-only NFS mount at ''/media/music'' and the Samba side stays untouched. Enter ''/media/music'' as media path in the module, not the volume path.
+
+In both cases the export is not managed by NS8: it survives module updates, but ''/etc/exports'' (and, for the remote case, the firewall rule) are yours to maintain, and the exported path changes if the Samba module is ever moved to another node or re-created under a new instance name.
 
 =====Settings=====
 
