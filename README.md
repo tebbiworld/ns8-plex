@@ -133,10 +133,13 @@ virtual machine of this project has no GPU; this path is untested there.
 
 ## Backup
 
-The NS8 backup includes the state directory and the `plex-config` volume
-(minus `Cache`, `Logs`, `Crash Reports`) and skips `plex-transcode`
-(`imageroot/etc/state-exclude.conf`). The media itself is not part of the
-module backup — it is external storage; back it up where it lives.
+The NS8 backup includes the module state and the `plex-config` volume
+(`imageroot/etc/state-include.conf`), minus `Cache`, `Logs` and `Crash Reports`
+(`state-exclude.conf`); `plex-transcode` is not included. Plex writes its own
+database snapshots (`Plug-in Support/Databases/*.db-<date>`) into that volume,
+so a restore has a consistent copy even if the live SQLite file was busy. The
+media itself is not part of the module backup — it is external storage; back
+it up where it lives.
 
 ## Notes
 

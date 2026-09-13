@@ -103,7 +103,7 @@ Nach dem Verknüpfen in Plex prüfen: *Einstellungen → Netzwerk → Benutzerde
 
 ## Backup und Update
 
-- NS8-Backup: State + `plex-config` (ohne `Cache`, `Logs`, `Crash Reports`); `plex-transcode` und die Medien sind ausgenommen. Medien dort sichern, wo sie liegen.
+- NS8-Backup (ab 1.0.1): State + `plex-config` (ohne `Cache`, `Logs`, `Crash Reports`); `plex-transcode` und die Medien sind ausgenommen. Medien dort sichern, wo sie liegen. Plex legt eigene Datenbank-Snapshots im Volume ab, die mitgesichert werden.
 - Modul-Update startet den Dienst automatisch neu; die neue Plex-Version läuft sofort.
 
 ## Fehlersuche

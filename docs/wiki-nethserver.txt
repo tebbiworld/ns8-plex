@@ -36,7 +36,7 @@ The Plex version is pinned in the module; a new module release through the Softw
 On the NethServer 8 cluster leader:
 
 <code bash>
-add-module ghcr.io/tebbiworld/plex:1.0.0 1
+add-module ghcr.io/tebbiworld/plex:1.0.1 1
 </code>
 
 Configure it, replacing the host name and the media paths (see //Preparing the media storage// first):
@@ -178,7 +178,7 @@ systemctl --user -M plex1@ start plex.service
   - Check the custom server access %%URL%% in Plex as described under //Installation//.
 
 =====Backup=====
-The NS8 backup contains the module state and the ''plex-config'' volume, minus ''Cache'', ''Logs'' and ''Crash Reports'' (''state-exclude.conf''). ''plex-transcode'' and the media are excluded; back up the media where it lives.
+Since module version 1.0.1 the NS8 backup contains the module state and the ''plex-config'' volume (database, metadata, thumbnails), minus ''Cache'', ''Logs'' and ''Crash Reports''. Plex's own scheduled database snapshots inside that volume are included, so a restore has a consistent copy. ''plex-transcode'' and the media are excluded; back up the media where it lives. (1.0.0 backed up the module environment only.)
 
 =====Troubleshooting=====
 
