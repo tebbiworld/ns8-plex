@@ -4,9 +4,14 @@
     "en": "Plex Media Server — stream your own movies, series, music and photos from media on iSCSI/NFS mounts of the node",
     "de": "Plex Media Server — eigene Filme, Serien, Musik und Fotos streamen; Medien auf iSCSI-/NFS-Mounts des Knotens"
   },
-  "categories": ["media"],
+  "categories": [
+    "multimedia"
+  ],
   "authors": [
-    { "name": "tebbi", "email": "info@ebbinghaus.world" }
+    {
+      "name": "tebbi",
+      "email": "info@ebbinghaus.world"
+    }
   ],
   "docs": {
     "documentation_url": "https://support.plex.tv/articles/",
