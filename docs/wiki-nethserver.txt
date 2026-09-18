@@ -21,7 +21,7 @@ A Plex account is required to link the server. Hardware transcoding additionally
 A single rootless container.
 
 ^ Component ^ Purpose ^
-| ''plex'' | Plex Media Server, port 32400, pinned image ''docker.io/plexinc/pms-docker:<version>'' |
+| ''plex'' | Plex Media Server, port 32400, pinned image ''%%docker.io/plexinc/pms-docker:<version>%%'' |
 | volume ''plex-config'' | database, metadata, thumbnails (in the NS8 backup, ''Cache'' and ''Logs'' excluded) |
 | volume ''plex-transcode'' | transcoder scratch space (not in the backup) |
 | media paths | host paths, bind-mounted read-only at the same path (not in the backup — back up the storage itself) |
@@ -184,7 +184,7 @@ Since module version 1.0.1 the NS8 backup contains the module state and the ''pl
 
 ^ Symptom ^ Cause and fix ^
 | Service does not start, journal says ''plex-check-media: ... is not on a mounted filesystem'' | The mount is missing (after a reboot, iSCSI/NFS not reachable). Mount it, then ''systemctl --user -M plex1@ restart plex.service''. |
-| ''... is not readable by plex1'' | Permissions: ''chmod -R o+rX <path>'' or the NFS export options. |
+| ''... is not readable by plex1'' | Permissions: ''%%chmod -R o+rX <path>%%'' or the NFS export options. |
 | Library empty although the files exist | The SELinux context is missing (''context='' in fstab), or the path in the container differs from the path stored in the library. |
 | "Bad Gateway" on the host name | The container is still starting (first start about 30 s): ''runagent -m plex1 podman logs plex''. |
 | Server cannot be linked | The token is older than four minutes — get a new one and save immediately. |
