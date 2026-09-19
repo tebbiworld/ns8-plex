@@ -30,6 +30,10 @@ The restored server keeps its identity and settings
     Should Be Equal    ${cfg['host']}    plex.ci.test
     Should Be Equal    ${cfg['timezone']}    Europe/Berlin
     Should Contain    ${cfg['media_paths']}    /srv/ci-media
+    # asked at the backend of the restored instance: the stopped original still owns a
+    # route for the same host name, so the host header is ambiguous
+    ${route} =    Run task    module/traefik1/get-route    {"instance":"${restored_id}"}
+    Should Be Equal    ${route['host']}    plex.ci.test
     ${out} =    Wait Until Keyword Succeeds    90 times    10 seconds
-    ...    Run on node    curl -fsSk -H 'Host: plex.ci.test' https://127.0.0.1/identity
+    ...    Run on node    curl -fsS ${route['url']}/identity
     Should Contain    ${out}    ${MACHINE_ID}
