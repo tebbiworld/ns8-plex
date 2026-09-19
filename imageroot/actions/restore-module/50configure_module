@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2026 tebbi
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# Re-apply the restored settings: every field configure-module accepts is
+# passed, except the one-time claim token (the restored server is claimed
+# already).
+
+import os
+import sys
+
+import agent
+
+env = os.environ
+
+# Media folders are node mounts. On another node they may not exist (yet):
+# configure-module would refuse them and abort the whole restore, so only the
+# ones present here are re-applied and the rest is reported.
+if not env.get("TRAEFIK_HOST"):
+    # The original instance was backed up before it was ever configured: there
+    # is nothing to re-apply, and configure-module requires a host name.
+    print(agent.SD_NOTICE + "no host name in the restored settings: configure the module from the UI", file=sys.stderr)
+    sys.exit(0)
+
+paths = [p for p in env.get("MEDIA_PATHS", "").split(",") if p]
+missing = [p for p in paths if not os.path.isdir(p)]
+if missing:
+    print(agent.SD_WARNING + "media folders not found on this node, add them again in the settings: "
+          + ", ".join(missing), file=sys.stderr)
+
+data = {
+    "host": env["TRAEFIK_HOST"],
+    "http2https": env.get("TRAEFIK_HTTP2HTTPS", "True") == "True",
+    "lets_encrypt": env.get("TRAEFIK_LETS_ENCRYPT", "False") == "True",
+    "network_mode": env.get("NETWORK_MODE", "bridge"),
+    "media_paths": [p for p in paths if p not in missing],
+    "media_require_mount": env.get("MEDIA_REQUIRE_MOUNT", "true") != "false",
+    "hw_transcoding": env.get("HW_TRANSCODING", "false") == "true",
+    "timezone": env.get("TZ", "UTC"),
+}
+if "TRAEFIK_LETS_ENCRYPT" not in env:
+    # A backup taken with a module version that did not record the setting: say
+    # so instead of silently asserting "off". The route is created without a
+    # certificate request; enable Let's Encrypt again in the settings.
+    data.pop("lets_encrypt", None)
+    print(agent.SD_WARNING + "the backup does not tell whether Let's Encrypt was enabled: the route is restored without it", file=sys.stderr)
+
+response = agent.tasks.run(agent_id=env["AGENT_ID"], action="configure-module", data=data)
+agent.assert_exp(response["exit_code"] == 0, "The configure-module subtask failed!")
