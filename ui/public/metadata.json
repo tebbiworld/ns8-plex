@@ -16,7 +16,9 @@
   "docs": {
     "documentation_url": "https://support.plex.tv/articles/",
     "bug_url": "https://github.com/tebbiworld/ns8-plex/issues",
-    "code_url": "https://github.com/tebbiworld/ns8-plex"
+    "code_url": "https://github.com/tebbiworld/ns8-plex",
+    "relnotes_url": "https://github.com/tebbiworld/ns8-plex/releases",
+    "terms_url": "https://www.plex.tv/about/privacy-legal/plex-terms-of-service/"
   },
   "source": "ghcr.io/tebbiworld/plex"
 }
