@@ -15,6 +15,12 @@ Alignment with the NethServer module conventions (NethServer/agents skills).
 
 Secrets: nothing to move. The one-time claim token only ever lived in `state/plex.env`, never in the module environment.
 
+### Platform integration
+
+- **Clone and move.** New `clone-module` step (a link to the restore step): a cloned or moved instance gets its route and settings back instead of coming up unconfigured. The settings are read from the source instance, including those a new instance starts with a default for.
+- `org.nethserver.volumes`: the bulk-data volume(s) `plex-config plex-transcode` can be placed on an additional disk when the module is installed.
+- The software centre shows the upstream terms before installation (`terms_url`); release notes are linked (`relnotes_url`).
+
 ## 1.0.1 — 2026-09-13
 
 ### Fixed

@@ -44,11 +44,13 @@ buildah add "${container}" imageroot /imageroot
 buildah add "${container}" ui/dist /ui
 # One TCP port: the Plex web/API port published on the node loopback (bridge
 # mode), fronted by Traefik. Host network mode uses 32400 directly instead.
+# The bulk-data volumes can be placed on an additional disk at install time.
 buildah config --entrypoint=/ \
     --label="org.nethserver.authorizations=traefik@node:routeadm" \
     --label="org.nethserver.tcp-ports-demand=1" \
     --label="org.nethserver.rootfull=0" \
     --label="org.nethserver.images=${runtime_images[*]}" \
+    --label="org.nethserver.volumes=plex-config plex-transcode" \
     "${container}"
 buildah commit "${container}" "${repobase}/${reponame}"
 
