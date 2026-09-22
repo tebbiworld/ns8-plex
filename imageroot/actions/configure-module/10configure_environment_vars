@@ -34,6 +34,9 @@ h2hs = data.get("http2https", True)
 lets_encrypt = data.get("lets_encrypt", False)
 agent.set_env("TRAEFIK_HOST", host)
 agent.set_env("TRAEFIK_HTTP2HTTPS", h2hs)
+if "lets_encrypt" in data:
+    # kept so restore-module can re-create the route with the same setting
+    agent.set_env("TRAEFIK_LETS_ENCRYPT", data["lets_encrypt"])
 
 web_port = os.environ["WEB_PORT"]
 network_mode = data.get("network_mode") or "bridge"

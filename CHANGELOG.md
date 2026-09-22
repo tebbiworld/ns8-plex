@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 — 2026-09-19
+
+Alignment with the NethServer module conventions (NethServer/agents skills).
+
+### Changed
+
+- **Working restore.** New `restore-module` steps re-apply every setting on the restored instance (host name and route, network mode, media folders, hardware transcoding, time zone); the server keeps its identity and stays claimed. Media folders that do not exist on the restore node are reported instead of aborting the restore.
+- `update-module` only restarts a running instance.
+
+### Added
+
+- Robot Framework tests (install, update from the previous release, backup and restore with an identity check) run on real NS8 nodes through `stephdl/ns8-ci-actions`.
+
+Secrets: nothing to move. The one-time claim token only ever lived in `state/plex.env`, never in the module environment.
+
 ## 1.0.1 — 2026-09-13
 
 ### Fixed
