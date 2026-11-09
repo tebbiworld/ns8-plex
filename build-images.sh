@@ -19,7 +19,7 @@ reponame="plex"
 # exactly this version (the "public"/"beta" tags would self-update at every
 # start and are deliberately not used). Bump the tag to ship a new Plex
 # version through the Software Center.
-pms_image="docker.io/plexinc/pms-docker:1.43.4.10903-e5521bd8c"
+pms_image="docker.io/plexinc/pms-docker:1.43.5.11079-b3b13e506"
 
 runtime_images=(
     "${pms_image}"
